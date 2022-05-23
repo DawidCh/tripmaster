@@ -8,9 +8,9 @@
 
 #include <HT1621.h>
 #include <Wire.h>
-#include <HMC5883L_Simple.h>
+#include <HMC5883L.h>
 
-HMC5883L_Simple compass;
+HMC5883L compass;
 HT1621 compassLCD;
 HT1621 tripLCD;
 
@@ -25,6 +25,9 @@ const unsigned int SECOND = 1000;
 const unsigned int TWO_SECONDS = 2000;
 const unsigned int THREE_SECONDS = 3000;
 const double WHEEL_TRIP = 1.67572552; // wheel circuit in meters ((21 in * pi) * 0.0254 m)
+const float DECLINATION_ANGLE_DEG=6; // for Łódź
+const float DECLINATION_ANGLE_MIN=8; // for Łódź
+const float TRIP_STEP = 0.01;
 
 double trip = 0.0;
 unsigned long lastWheelPulseInMillis = 0;
@@ -35,6 +38,9 @@ unsigned int batteryLevel = 0;
 void updateCompass();
 void handleButtons();
 void wheelPulse();
+float radToDeg(float);
+float applyDeclinationAngle(float);
+int modulo(int, int);
 
 //app
 void setup() {
@@ -52,12 +58,18 @@ void setup() {
   
   Serial.begin(9600);
   Wire.begin();
-  compass.SetDeclination(6, 7, 'E');
-  compass.SetSamplingMode(COMPASS_SINGLE);
-  compass.SetScale(COMPASS_SCALE_130);
-  compass.SetOrientation(COMPASS_HORIZONTAL_X_NORTH);
-  compassLCD.print((char*) "*******");
-  tripLCD.print((char*) "*******");
+
+  
+  while (!compass.begin())
+  {
+    compassLCD.print((char*) "--00001-");
+    delay(500);
+  }
+  compass.setSamples(HMC5883L_SAMPLES_8);
+  compass.setOffset(-32, 59);
+
+  compassLCD.print((char*) "HELLO");
+  tripLCD.print((char*) "HELLO");
   digitalWrite(LED, LOW);
   delay(1500);
 }
@@ -69,8 +81,10 @@ void loop() {
 }
 
 void updateCompass() {
-  float heading = compass.GetHeadingDegrees();
-  compassLCD.print((float) roundf(heading), (char*) "%5u*", 0);
+  Vector norm = compass.readNormalize();
+  float heading = radToDeg(atan2(norm.YAxis, norm.XAxis));
+  heading = applyDeclinationAngle(heading);
+  compassLCD.print(heading, (char*) "%5u*", 0);
 }
 
 void handleButtons() {
@@ -79,10 +93,10 @@ void handleButtons() {
   unsigned int tripResetBtnState = digitalRead(TRIP_RESET);
   
   if (tripUpBtnState == LOW) {
-    trip += 0.01; // decrease 10m
+    trip += TRIP_STEP; // increase 10m
   }
-  if (tripDownBtnState == LOW && trip >= 0.01) {
-    trip -= 0.01; // decrease 10m
+  if (tripDownBtnState == LOW && trip >= TRIP_STEP) {
+    trip -= TRIP_STEP; // decrease 10m
   }
   
   if (tripResetBtnState == HIGH) { //reset btn not pressed
@@ -117,4 +131,17 @@ void wheelPulse() {
     tripLCD.print(trip, 2);
   }
   lastWheelPulseInMillis = wheelPulseInMillis;
+}
+
+float radToDeg(float rad) {
+  return rad * 180/M_PI;
+}
+
+float applyDeclinationAngle(float degHeading) {
+  // Formula: modulo((deg + (min / 60.0)) / (180 / M_PI), 360);
+  return  modulo(round(degHeading + (DECLINATION_ANGLE_DEG + (DECLINATION_ANGLE_MIN / 60.0))), 360);
+}
+
+int modulo(int x, int N){
+    return (x % N + N) %N;
 }
