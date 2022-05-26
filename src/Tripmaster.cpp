@@ -25,8 +25,7 @@ const unsigned int SECOND = 1000;
 const unsigned int TWO_SECONDS = 2000;
 const unsigned int THREE_SECONDS = 3000;
 const double WHEEL_TRIP = 1.67572552; // wheel circuit in meters ((21 in * pi) * 0.0254 m)
-const float DECLINATION_ANGLE_DEG=6; // for Łódź
-const float DECLINATION_ANGLE_MIN=8; // for Łódź
+const float DECLINATION_ANGLE_DEG = 6.0 + 8.0/60.0; // for Łódź 6'8" DEG
 const float TRIP_STEP = 0.01;
 
 double trip = 0.0;
@@ -62,14 +61,14 @@ void setup() {
   
   while (!compass.begin())
   {
-    compassLCD.print((char*) "--00001-");
+    compassLCD.print((char*) "-00001-");
     delay(500);
   }
   compass.setSamples(HMC5883L_SAMPLES_8);
   compass.setOffset(-32, 59);
 
-  compassLCD.print((char*) "HELLO");
-  tripLCD.print((char*) "HELLO");
+  tripLCD.print((char*) "HELL0");
+  compassLCD.print((char*) "M0T0");
   digitalWrite(LED, LOW);
   delay(1500);
 }
@@ -139,7 +138,7 @@ float radToDeg(float rad) {
 
 float applyDeclinationAngle(float degHeading) {
   // Formula: modulo((deg + (min / 60.0)) / (180 / M_PI), 360);
-  return  modulo(round(degHeading + (DECLINATION_ANGLE_DEG + (DECLINATION_ANGLE_MIN / 60.0))), 360);
+  return  modulo(round(degHeading + DECLINATION_ANGLE_DEG), 360);
 }
 
 int modulo(int x, int N){
