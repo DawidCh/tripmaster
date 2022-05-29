@@ -26,6 +26,7 @@ const unsigned int RESET_TIMEOUT = 4000;
 const unsigned int SECOND = 1000;
 const unsigned int TWO_SECONDS = 2000;
 const unsigned int THREE_SECONDS = 3000;
+const unsigned int COMPASS_LCD_REFRESH_PERIOD_MS = 250;
 const double WHEEL_TRIP = 1.67572552; // wheel circuit in meters ((21 in * pi) * 0.0254 m)
 const float DECLINATION_ANGLE_DEG = 6.0 + 8.0/60.0; // for Łódź 6'8" DEG
 const float TRIP_STEP = 0.01;
@@ -34,6 +35,7 @@ double trip = 0.0;
 unsigned long lastWheelPulseInMillis = 0;
 unsigned long lastResetBtnPressedInMillis = 0;
 unsigned int batteryLevel = 0;
+unsigned long lastCompassRefresh = 0;
 
 //methods
 void updateCompass();
@@ -46,21 +48,21 @@ void setupButtons();
 void setupCompass();
 void setupSerial();
 void setupLCDs();
-void printHelloMessage(char*, char*);
+void printMessage(char*, char*);
 void setupMPU();
 float tiltCompensate(Vector, Vector);
 
 //app
 void setup() {
   digitalWrite(LED, LOW);
-  setupButtons();
   setupLCDs();
+  setupButtons();
 
   setupSerial();
-  setupCompass();
   setupMPU();
+  setupCompass();
 
-  printHelloMessage("HELL0", "M0T0");
+  printMessage((char*) "HELL0", (char*) "M0T0");
   delay(2000);
 }
 
@@ -81,7 +83,12 @@ void updateCompass() {
   
   float heading = radToDeg(headingRad);
   heading = applyDeclinationAngle(heading);
-  compassLCD.print(heading, (char*) "%5u*", 0);
+  
+  unsigned long now = millis();
+  if (now - lastCompassRefresh > COMPASS_LCD_REFRESH_PERIOD_MS) {
+    lastCompassRefresh = now;
+    compassLCD.print(heading, (char*) "%5u*", 0);
+  }
 }
 
 void handleButtons() {
@@ -150,19 +157,23 @@ void setupButtons() {
   pinMode(TRIP_RESET, INPUT_PULLUP);
   pinMode(WHEEL_SENSOR, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(WHEEL_SENSOR), wheelPulse, FALLING);
+  printMessage((char*) "B", (char*) "0");
 }
 
 void setupCompass() {
+  printMessage((char*) "COMPASS", (char*) "-0001-");
   while (!compass.begin())
   {
-    compassLCD.print((char*) "-00001-");
     delay(500);
   }
   compass.setSamples(HMC5883L_SAMPLES_8);
+  compass.setDataRate(HMC5883L_DATARATE_75HZ);
   compass.setOffset(-32, 59);
+  printMessage((char*) "COMPASS", (char*) "0");
 }
 
 void setupMPU() {
+  printMessage((char*) "MPU", (char*) "-0002-");
   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
   {
     delay(500);
@@ -170,21 +181,26 @@ void setupMPU() {
   mpu.setI2CMasterModeEnabled(false);
   mpu.setI2CBypassEnabled(true) ;
   mpu.setSleepEnabled(false);
+  mpu.setThreshold(0);
+  printMessage((char*) "MPU", (char*) "0");
 }
 
 void setupSerial() {
   Serial.begin(9600);
-  Wire.begin();
+
+  printMessage((char*) "SERIAL", (char*) "0");
 }
 
 void setupLCDs() {
   compassLCD.begin(12, 11, 10); // (cs, wr, Data, backlight)
-  compassLCD.clear();
   tripLCD.begin(9, 8, 7); // (cs, wr, Data, backlight)
   tripLCD.clear();
+  compassLCD.clear();
+
+  printMessage((char*) "LCD", (char*) "0");
 }
 
-void printHelloMessage(char* tripMsg, char* compassMsg) {
+void printMessage(char* tripMsg, char* compassMsg) {
   tripLCD.print(tripMsg);
   compassLCD.print(compassMsg);
 }
