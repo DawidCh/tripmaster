@@ -27,6 +27,8 @@ const unsigned int SECOND = 1000;
 const unsigned int TWO_SECONDS = 2000;
 const unsigned int THREE_SECONDS = 3000;
 const unsigned int COMPASS_LCD_REFRESH_PERIOD_MS = 250;
+const unsigned int BUTTON_DEAD_TIME_PERIOD_MS = 30;
+const unsigned int WHEEL_PULSE_DEAD_TIME_PERIOD_MS = 20;
 const double WHEEL_TRIP = 1.67572552; // wheel circuit in meters ((21 in * pi) * 0.0254 m)
 const float DECLINATION_ANGLE_DEG = 6.0 + 8.0/60.0; // for Łódź 6'8" DEG
 const float TRIP_STEP = 0.01;
@@ -34,6 +36,7 @@ const float TRIP_STEP = 0.01;
 double trip = 0.0;
 unsigned long lastWheelPulseInMillis = 0;
 unsigned long lastResetBtnPressedInMillis = 0;
+unsigned long lastTripBtnPressedInMillis = 0;
 unsigned int batteryLevel = 0;
 unsigned long lastCompassRefresh = 0;
 
@@ -92,37 +95,44 @@ void updateCompass() {
 }
 
 void handleButtons() {
+  unsigned long now = millis();
+  unsigned long tripBtnLastPressedPeriod = now - lastTripBtnPressedInMillis;
+  if (tripBtnLastPressedPeriod < BUTTON_DEAD_TIME_PERIOD_MS) {
+    return;
+  }
   unsigned int tripDownBtnState = digitalRead(TRIP_DOWN);
   unsigned int tripUpBtnState = digitalRead(TRIP_UP);
   unsigned int tripResetBtnState = digitalRead(TRIP_RESET);
   
   if (tripUpBtnState == LOW) {
     trip += TRIP_STEP; // increase 10m
+    lastTripBtnPressedInMillis = now;
   }
   if (tripDownBtnState == LOW && trip >= TRIP_STEP) {
     trip -= TRIP_STEP; // decrease 10m
+    lastTripBtnPressedInMillis = now;
   }
   
   if (tripResetBtnState == HIGH) { //reset btn not pressed
-    lastResetBtnPressedInMillis = millis(); //reset clock when not pressed
+    lastResetBtnPressedInMillis = now; //reset clock when not pressed
     batteryLevel = 0;
   }
-  unsigned long pressingTime = millis() - lastResetBtnPressedInMillis;
-  if (trip > 0.0 && pressingTime >= RESET_TIMEOUT) {
+  unsigned long resetBtnPressingTime = now - lastResetBtnPressedInMillis;
+  if (trip > 0.0 && resetBtnPressingTime >= RESET_TIMEOUT) {
     trip = 0.0;
     batteryLevel = 0;
   }
 
-  if (pressingTime > SECOND)  {
+  if (resetBtnPressingTime > SECOND)  {
     batteryLevel = 1;
   }
-  if (pressingTime > TWO_SECONDS)  {
+  if (resetBtnPressingTime > TWO_SECONDS)  {
     batteryLevel = 2;
   }
-  if (pressingTime > THREE_SECONDS)  {
+  if (resetBtnPressingTime > THREE_SECONDS)  {
     batteryLevel = 3;
   }
-  if (pressingTime > RESET_TIMEOUT)  {
+  if (resetBtnPressingTime > RESET_TIMEOUT)  {
     batteryLevel = 0;
   }
   tripLCD.setBatteryLevel(batteryLevel);
@@ -130,7 +140,7 @@ void handleButtons() {
 
 void wheelPulse() {
   unsigned long wheelPulseInMillis = millis();
-  if (wheelPulseInMillis - lastWheelPulseInMillis > 20) {
+  if (wheelPulseInMillis - lastWheelPulseInMillis > WHEEL_PULSE_DEAD_TIME_PERIOD_MS) {
     trip += 0.01; 
     tripLCD.print(trip, 2);
   }
@@ -168,7 +178,7 @@ void setupCompass() {
   }
   compass.setSamples(HMC5883L_SAMPLES_8);
   compass.setDataRate(HMC5883L_DATARATE_75HZ);
-  compass.setOffset(-32, 59);
+  // compass.setOffset(-32, 59);
   printMessage((char*) "COMPASS", (char*) "0");
 }
 
