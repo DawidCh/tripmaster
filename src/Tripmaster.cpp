@@ -29,7 +29,7 @@ const unsigned int THREE_SECONDS = 3000;
 const unsigned int COMPASS_LCD_REFRESH_PERIOD_MS = 250;
 const unsigned int BUTTON_DEAD_TIME_PERIOD_MS = 30;
 const unsigned int WHEEL_PULSE_DEAD_TIME_PERIOD_MS = 20;
-const double WHEEL_TRIP = 1.67572552; // wheel circuit in meters ((21 in * pi) * 0.0254 m)
+const double WHEEL_TRIP = 1.67572552/1000.0; // wheel circuit in km
 const float DECLINATION_ANGLE_DEG = 6.0 + 8.0/60.0; // for Łódź 6'8" DEG
 const float TRIP_STEP = 0.01;
 
@@ -54,6 +54,8 @@ void setupLCDs();
 void printMessage(char*, char*);
 void setupMPU();
 float tiltCompensate(Vector, Vector);
+void handleResetButton();
+void handleTripButton(unsigned int, float);
 
 //app
 void setup() {
@@ -62,7 +64,7 @@ void setup() {
   setupButtons();
 
   setupSerial();
-  setupMPU();
+  // setupMPU();
   setupCompass();
 
   printMessage((char*) "HELL0", (char*) "M0T0");
@@ -73,91 +75,6 @@ void loop() {
   updateCompass();
   handleButtons();
   tripLCD.print(trip, 2);
-}
-
-void updateCompass() {
-  Vector mag = compass.readNormalize();
-  Vector acc = mpu.readScaledAccel();
-
-  float headingRad = tiltCompensate(mag, acc);
-  if (headingRad == -1000) {
-    headingRad = atan2(mag.YAxis, mag.XAxis);
-  }
-  
-  float heading = radToDeg(headingRad);
-  heading = applyDeclinationAngle(heading);
-  
-  unsigned long now = millis();
-  if (now - lastCompassRefresh > COMPASS_LCD_REFRESH_PERIOD_MS) {
-    lastCompassRefresh = now;
-    compassLCD.print(heading, (char*) "%5u*", 0);
-  }
-}
-
-void handleButtons() {
-  unsigned long now = millis();
-  unsigned long tripBtnLastPressedPeriod = now - lastTripBtnPressedInMillis;
-  if (tripBtnLastPressedPeriod < BUTTON_DEAD_TIME_PERIOD_MS) {
-    return;
-  }
-  unsigned int tripDownBtnState = digitalRead(TRIP_DOWN);
-  unsigned int tripUpBtnState = digitalRead(TRIP_UP);
-  unsigned int tripResetBtnState = digitalRead(TRIP_RESET);
-  
-  if (tripUpBtnState == LOW) {
-    trip += TRIP_STEP; // increase 10m
-    lastTripBtnPressedInMillis = now;
-  }
-  if (tripDownBtnState == LOW && trip >= TRIP_STEP) {
-    trip -= TRIP_STEP; // decrease 10m
-    lastTripBtnPressedInMillis = now;
-  }
-  
-  if (tripResetBtnState == HIGH) { //reset btn not pressed
-    lastResetBtnPressedInMillis = now; //reset clock when not pressed
-    batteryLevel = 0;
-  }
-  unsigned long resetBtnPressingTime = now - lastResetBtnPressedInMillis;
-  if (trip > 0.0 && resetBtnPressingTime >= RESET_TIMEOUT) {
-    trip = 0.0;
-    batteryLevel = 0;
-  }
-
-  if (resetBtnPressingTime > SECOND)  {
-    batteryLevel = 1;
-  }
-  if (resetBtnPressingTime > TWO_SECONDS)  {
-    batteryLevel = 2;
-  }
-  if (resetBtnPressingTime > THREE_SECONDS)  {
-    batteryLevel = 3;
-  }
-  if (resetBtnPressingTime > RESET_TIMEOUT)  {
-    batteryLevel = 0;
-  }
-  tripLCD.setBatteryLevel(batteryLevel);
-}
-
-void wheelPulse() {
-  unsigned long wheelPulseInMillis = millis();
-  if (wheelPulseInMillis - lastWheelPulseInMillis > WHEEL_PULSE_DEAD_TIME_PERIOD_MS) {
-    trip += 0.01; 
-    tripLCD.print(trip, 2);
-  }
-  lastWheelPulseInMillis = wheelPulseInMillis;
-}
-
-float radToDeg(float rad) {
-  return rad * 180/M_PI;
-}
-
-float applyDeclinationAngle(float degHeading) {
-  // Formula: modulo((deg + (min / 60.0)) / (180 / M_PI), 360);
-  return  modulo(round(degHeading + DECLINATION_ANGLE_DEG), 360);
-}
-
-int modulo(int x, int N){
-    return (x % N + N) %N;
 }
 
 void setupButtons() {
@@ -178,7 +95,7 @@ void setupCompass() {
   }
   compass.setSamples(HMC5883L_SAMPLES_8);
   compass.setDataRate(HMC5883L_DATARATE_75HZ);
-  // compass.setOffset(-32, 59);
+  compass.setOffset(-32, 59);
   printMessage((char*) "COMPASS", (char*) "0");
 }
 
@@ -208,6 +125,94 @@ void setupLCDs() {
   compassLCD.clear();
 
   printMessage((char*) "LCD", (char*) "0");
+}
+
+void updateCompass() {
+  Vector mag = compass.readNormalize();
+  // Vector acc = mpu.readScaledAccel();
+
+  // float headingRad = tiltCompensate(mag, acc);
+  // if (headingRad == -1000) {
+  float headingRad = atan2(mag.YAxis, mag.XAxis);
+  // }
+  
+  float heading = radToDeg(headingRad);
+  heading = applyDeclinationAngle(heading);
+  
+  unsigned long now = millis();
+  if (now - lastCompassRefresh > COMPASS_LCD_REFRESH_PERIOD_MS) {
+    lastCompassRefresh = now;
+    compassLCD.print(heading, (char*) "%5u*", 0);
+  }
+}
+
+void handleButtons() {
+  unsigned long now = millis();
+  unsigned long tripBtnLastPressedPeriod = now - lastTripBtnPressedInMillis;
+  if (tripBtnLastPressedPeriod < BUTTON_DEAD_TIME_PERIOD_MS) {
+    return;
+  }
+  
+  handleTripButton(TRIP_DOWN, -1 * TRIP_STEP);
+  handleTripButton(TRIP_UP, TRIP_STEP);
+  handleResetButton();
+}
+
+void handleTripButton(unsigned int BUTTON, float tripStep) {
+  unsigned long now = millis();
+  unsigned int buttonState = digitalRead(BUTTON);
+  if (buttonState == LOW) {
+    trip += tripStep; // increase 10m
+    lastTripBtnPressedInMillis = now;
+  }
+}
+
+void handleResetButton() {
+  unsigned long now = millis();
+  unsigned int tripResetBtnState = digitalRead(TRIP_RESET);
+  if (tripResetBtnState == HIGH) { //reset btn not pressed
+    lastResetBtnPressedInMillis = now; //reset clock when not pressed
+    batteryLevel = 0;
+  }
+  unsigned long resetBtnPressingTime = now - lastResetBtnPressedInMillis;
+  if (trip > 0.0 && resetBtnPressingTime >= RESET_TIMEOUT) {
+    trip = 0.0;
+    batteryLevel = 0;
+  }
+
+  if (resetBtnPressingTime > SECOND)  {
+    batteryLevel = 1;
+  }
+  if (resetBtnPressingTime > TWO_SECONDS)  {
+    batteryLevel = 2;
+  }
+  if (resetBtnPressingTime > THREE_SECONDS)  {
+    batteryLevel = 3;
+  }
+  if (resetBtnPressingTime > RESET_TIMEOUT)  {
+    batteryLevel = 0;
+  }
+  tripLCD.setBatteryLevel(batteryLevel);
+}
+
+void wheelPulse() {
+  unsigned long wheelPulseInMillis = millis();
+  if (wheelPulseInMillis - lastWheelPulseInMillis > WHEEL_PULSE_DEAD_TIME_PERIOD_MS) {
+    trip += WHEEL_TRIP; 
+  }
+  lastWheelPulseInMillis = wheelPulseInMillis;
+}
+
+float radToDeg(float rad) {
+  return rad * 180/M_PI;
+}
+
+float applyDeclinationAngle(float degHeading) {
+  return modulo(round(degHeading + DECLINATION_ANGLE_DEG), 360);
+}
+
+int modulo(int x, int N){
+    return (x % N + N) %N;
 }
 
 void printMessage(char* tripMsg, char* compassMsg) {
