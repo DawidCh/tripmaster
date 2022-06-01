@@ -27,18 +27,21 @@ const unsigned int SECOND = 1000;
 const unsigned int TWO_SECONDS = 2000;
 const unsigned int THREE_SECONDS = 3000;
 const unsigned int COMPASS_LCD_REFRESH_PERIOD_MS = 250;
+const unsigned int TRIP_LCD_REFRESH_PERIOD_MS = 0;
 const unsigned int BUTTON_DEAD_TIME_PERIOD_MS = 30;
 const unsigned int WHEEL_PULSE_DEAD_TIME_PERIOD_MS = 20;
-const double WHEEL_TRIP = 1.67572552/1000.0; // wheel circuit in km
 const float DECLINATION_ANGLE_DEG = 6.0 + 8.0/60.0; // for Łódź 6'8" DEG
+const double WHEEL_TRIP = 1.67572552/1000.0; // wheel circuit in km
 const float TRIP_STEP = 0.01;
 
 double trip = 0.0;
+unsigned long revs = 0;
 unsigned long lastWheelPulseInMillis = 0;
 unsigned long lastResetBtnPressedInMillis = 0;
 unsigned long lastTripBtnPressedInMillis = 0;
 unsigned int batteryLevel = 0;
-unsigned long lastCompassRefresh = 0;
+unsigned long lastCompassRefreshInMillis = 0;
+float speed = 0.0;
 
 //methods
 void updateCompass();
@@ -56,6 +59,9 @@ void setupMPU();
 float tiltCompensate(Vector, Vector);
 void handleResetButton();
 void handleTripButton(unsigned int, float);
+void updateTrip();
+void updateSpeed();
+void refreshCompassLcd();
 
 //app
 void setup() {
@@ -72,9 +78,11 @@ void setup() {
 }
 
 void loop() {  
-  updateCompass();
+  // updateCompass();
   handleButtons();
+  updateTrip();
   tripLCD.print(trip, 2);
+  refreshCompassLcd();
 }
 
 void setupButtons() {
@@ -140,8 +148,8 @@ void updateCompass() {
   heading = applyDeclinationAngle(heading);
   
   unsigned long now = millis();
-  if (now - lastCompassRefresh > COMPASS_LCD_REFRESH_PERIOD_MS) {
-    lastCompassRefresh = now;
+  if (now - lastCompassRefreshInMillis > COMPASS_LCD_REFRESH_PERIOD_MS) {
+    lastCompassRefreshInMillis = now;
     compassLCD.print(heading, (char*) "%5u*", 0);
   }
 }
@@ -158,11 +166,19 @@ void handleButtons() {
   handleResetButton();
 }
 
+void updateTrip() {
+  trip = revs * WHEEL_TRIP;
+}
+
+void updateSpeed(unsigned long now) {
+  speed = round((WHEEL_TRIP/(now - lastWheelPulseInMillis)/1000.0)*3600.0);
+}
+
 void handleTripButton(unsigned int BUTTON, float tripStep) {
   unsigned long now = millis();
   unsigned int buttonState = digitalRead(BUTTON);
   if (buttonState == LOW) {
-    trip += tripStep; // increase 10m
+    trip += tripStep; 
     lastTripBtnPressedInMillis = now;
   }
 }
@@ -189,18 +205,16 @@ void handleResetButton() {
   if (resetBtnPressingTime > THREE_SECONDS)  {
     batteryLevel = 3;
   }
-  if (resetBtnPressingTime > RESET_TIMEOUT)  {
-    batteryLevel = 0;
-  }
   tripLCD.setBatteryLevel(batteryLevel);
 }
 
 void wheelPulse() {
-  unsigned long wheelPulseInMillis = millis();
-  if (wheelPulseInMillis - lastWheelPulseInMillis > WHEEL_PULSE_DEAD_TIME_PERIOD_MS) {
-    trip += WHEEL_TRIP; 
+  unsigned long now = millis();
+  if (now - lastWheelPulseInMillis > WHEEL_PULSE_DEAD_TIME_PERIOD_MS) {
+    revs++;
+    updateSpeed(now);
   }
-  lastWheelPulseInMillis = wheelPulseInMillis;
+  lastWheelPulseInMillis = now;
 }
 
 float radToDeg(float rad) {
@@ -246,4 +260,12 @@ float tiltCompensate(Vector mag, Vector normAccel)
   float Yh = mag.XAxis * sinRoll * sinPitch + mag.YAxis * cosRoll - mag.ZAxis * sinRoll * cosPitch;
  
   return atan2(Yh, Xh);
+}
+
+void refreshCompassLcd() {
+  unsigned long now = millis();
+  if (now - lastCompassRefreshInMillis > COMPASS_LCD_REFRESH_PERIOD_MS) {
+    lastCompassRefreshInMillis = now;
+    compassLCD.print(speed, (char*) "%u", 0);
+  }
 }
