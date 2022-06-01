@@ -27,7 +27,6 @@ const unsigned int SECOND = 1000;
 const unsigned int TWO_SECONDS = 2000;
 const unsigned int THREE_SECONDS = 3000;
 const unsigned int COMPASS_LCD_REFRESH_PERIOD_MS = 250;
-const unsigned int TRIP_LCD_REFRESH_PERIOD_MS = 0;
 const unsigned int BUTTON_DEAD_TIME_PERIOD_MS = 30;
 const unsigned int WHEEL_PULSE_DEAD_TIME_PERIOD_MS = 20;
 const float DECLINATION_ANGLE_DEG = 6.0 + 8.0/60.0; // for Łódź 6'8" DEG
