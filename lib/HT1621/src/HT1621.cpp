@@ -198,22 +198,17 @@ void HT1621::print(long num, char*flags, int precision){
 
 	char localbuffer[7]; //buffer to work within the function
 	snprintf(localbuffer, 7, flags, num); // convert the decimal into string
-	Serial.begin(9600);
-	Serial.print(localbuffer);
-	Serial.print("\t");
 
 	// horrible handling but should get us working. needs refactor in next major
 	if (precision > 0 && (num) < pow(10, precision)) {
 		// we remove extra leading zeros
 		for (int i = 0; i < (5 - precision); i++) {
-			Serial.print(localbuffer[1]);
 			if(localbuffer[i+1] == '0' && localbuffer[i] != '-'){ // we remove only if there is another zero ahead AND if it's not a minus sign
 				localbuffer[i] = ' ';
 			}
 			else{
 				break;
 			}
-			Serial.println();
 	}
 	}
 
